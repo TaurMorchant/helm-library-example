@@ -1,11 +1,14 @@
-name: Release Helm Library
+name: Manual Helm Library Release
 
 on:
-  release:
-    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Chart version to release (e.g. 0.1.0)'
+        required: true
 
 jobs:
-  build-and-publish:
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +23,7 @@ jobs:
       - name: Package Helm library
         run: |
           mkdir -p .build
-          helm package lib --destination .build
+          helm package lib --version ${{ github.event.inputs.release_version }} --destination .build
 
       - name: Update Helm repo index in docs/
         run: |
@@ -36,6 +39,16 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add docs/
-          git commit -m "Release Helm library version ${{ github.event.release.tag_name }}" || echo "No changes to commit"
+          git commit -m "Release Helm library version ${{ github.event.inputs.release_version }}" || echo "No changes to commit"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
           git push origin main
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.release_version }}
+          name: Helm library v${{ github.event.inputs.release_version }}
+          body: |
+            Helm chart library version v${{ github.event.inputs.release_version }} released.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
