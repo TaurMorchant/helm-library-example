@@ -43,7 +43,7 @@ jobs:
         run: |
           mkdir -p docs
           helm repo index .build --url https://taurmorchant.github.io/helm-library-example --merge docs/index.yaml
-          mv .build/*.tgz docs/
+          cp .build/*.tgz docs/
           mv .build/index.yaml docs/index.yaml
 
       - name: Commit and push changes to docs/
