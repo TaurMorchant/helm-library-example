@@ -55,6 +55,34 @@ jobs:
           git add .
           git commit -m "Publish chart version ${{ steps.chart.outputs.chart_version }}" || echo "No changes"
           git push origin gh-pages
+          
+      - name: Wait for GitHub Pages deployment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "⏳ Waiting for GitHub Pages deployment to complete..."
+
+          for i in {1..20}; do
+            status=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              https://api.github.com/repos/${{ github.repository }}/pages/deployment \
+              | jq -r '.status')
+
+            echo "Attempt $i: status = $status"
+
+            if [ "$status" = "built" ]; then
+              echo "✅ GitHub Pages built successfully."
+              exit 0
+            elif [ "$status" = "null" ]; then
+              echo "⏳ No build yet. Waiting..."
+            else
+              echo "⏳ Still building... ($status)"
+            fi
+
+            sleep 10
+          done
+
+          echo "❌ Timed out waiting for GitHub Pages deployment."
+          exit 1
 
       - name: Upload Helm package to GitHub Release
         uses: softprops/action-gh-release@v2
