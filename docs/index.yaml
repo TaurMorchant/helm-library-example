@@ -2,6 +2,14 @@ apiVersion: v1
 entries:
   vlla-helm-library:
   - apiVersion: v2
+    created: "2025-06-09T12:49:35.329621317Z"
+    digest: 79759cdcbbc019aceeab6d747fba088c617c163f88d3ceff308f558bbd697ce3
+    name: vlla-helm-library
+    type: library
+    urls:
+    - https://TaurMorchant.github.io/helm-library-example/vlla-helm-library-0.1.1.tgz
+    version: 0.1.1
+  - apiVersion: v2
     created: "2025-06-09T12:36:17.876687665Z"
     digest: 34768c233794e5c733b9b26ddaea1504f60f0e0d28e7af3302a21362a57a7e74
     name: vlla-helm-library
@@ -9,4 +17,4 @@ entries:
     urls:
     - https://TaurMorchant.github.io/helm-library-example/vlla-helm-library-0.1.0.tgz
     version: 0.1.0
-generated: "2025-06-09T12:36:17.876475309Z"
+generated: "2025-06-09T12:49:35.329422897Z"
