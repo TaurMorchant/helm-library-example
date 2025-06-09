@@ -1,4 +1,4 @@
-name: Manual Helm Library Release
+name: Manual Helm Library Release (gh-pages)
 
 on:
   workflow_dispatch:
@@ -8,13 +8,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout main
         uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v3
         with:
-          version: v3.14.0
+          fetch-depth: 0
 
       - name: Extract version from Chart.yaml
         id: chart
@@ -28,36 +25,38 @@ jobs:
           response=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag)
-
           if [ "$response" -eq 200 ]; then
             echo "❌ Release with tag $tag already exists!"
             exit 1
           fi
 
-      - name: Package Helm library
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.14.0
+
+      - name: Package Helm chart
         run: |
           mkdir -p .build
           helm package lib --destination .build
 
-      - name: Update Helm repo index in docs/
+      - name: Prepare gh-pages
         run: |
-          mkdir -p docs
-          helm repo index .build --url https://taurmorchant.github.io/helm-library-example --merge docs/index.yaml
-          cp .build/*.tgz docs/
-          mv .build/index.yaml docs/index.yaml
+          git fetch origin gh-pages
+          git worktree add gh-pages gh-pages
 
-      - name: Commit and push changes to docs/
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update index.yaml and push to gh-pages
         run: |
+          cd gh-pages
+          helm repo index ../.build --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }} --merge index.yaml
+          cp ../.build/*.tgz .
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add docs/
-          git commit -m "Release Helm library version ${{ steps.chart.outputs.chart_version }}" || echo "No changes to commit"
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
-          git push origin main
+          git add .
+          git commit -m "Publish chart version ${{ steps.chart.outputs.chart_version }}" || echo "No changes"
+          git push origin gh-pages
 
-      - name: Create GitHub Release
+      - name: Upload Helm package to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.chart.outputs.chart_version }}
@@ -65,7 +64,7 @@ jobs:
           body: |
             Helm chart released.
 
-            📦 Helm repo: [index.yaml](https://taurmorchant.github.io/helm-library-example/index.yaml)
+            📦 Helm repo: [index.yaml](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.yaml)
           files: .build/*.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
