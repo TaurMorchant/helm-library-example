@@ -66,5 +66,6 @@ jobs:
             Helm chart released.
 
             📦 Helm repo: [index.yaml](https://taurmorchant.github.io/helm-library-example/index.yaml)
+          files: .build/*.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
