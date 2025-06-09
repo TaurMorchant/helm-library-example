@@ -2,10 +2,6 @@ name: Manual Helm Library Release
 
 on:
   workflow_dispatch:
-    inputs:
-      release_version:
-        description: 'Chart version to release (e.g. 0.1.0)'
-        required: true
 
 jobs:
   build-and-release:
@@ -20,15 +16,33 @@ jobs:
         with:
           version: v3.14.0
 
+      - name: Extract version from Chart.yaml
+        id: chart
+        run: |
+          version=$(grep '^version:' lib/Chart.yaml | awk '{print $2}')
+          echo "chart_version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check if release already exists
+        run: |
+          tag="v${{ steps.chart.outputs.chart_version }}"
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag)
+
+          if [ "$response" -eq 200 ]; then
+            echo "❌ Release with tag $tag already exists!"
+            exit 1
+          fi
+
       - name: Package Helm library
         run: |
           mkdir -p .build
-          helm package lib --version ${{ github.event.inputs.release_version }} --destination .build
+          helm package lib --destination .build
 
       - name: Update Helm repo index in docs/
         run: |
           mkdir -p docs
-          helm repo index .build --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }} --merge docs/index.yaml
+          helm repo index .build --url https://taurmorchant.github.io/helm-library-example --merge docs/index.yaml
           mv .build/*.tgz docs/
           mv .build/index.yaml docs/index.yaml
 
@@ -39,16 +53,18 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add docs/
-          git commit -m "Release Helm library version ${{ github.event.inputs.release_version }}" || echo "No changes to commit"
+          git commit -m "Release Helm library version ${{ steps.chart.outputs.chart_version }}" || echo "No changes to commit"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
           git push origin main
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.event.inputs.release_version }}
-          name: Helm library v${{ github.event.inputs.release_version }}
+          tag_name: v${{ steps.chart.outputs.chart_version }}
+          name: Helm library v${{ steps.chart.outputs.chart_version }}
           body: |
-            Helm chart library version v${{ github.event.inputs.release_version }} released.
+            Helm chart released.
+
+            📦 Helm repo: [index.yaml](https://taurmorchant.github.io/helm-library-example/index.yaml)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
