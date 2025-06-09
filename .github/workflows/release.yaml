@@ -56,42 +56,26 @@ jobs:
           git commit -m "Publish chart version ${{ steps.chart.outputs.chart_version }}" || echo "No changes"
           git push origin gh-pages
           
-      - name: Wait for GitHub Pages deployment
+      - name: Wait for index.yaml to be updated
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "⏳ Waiting for GitHub Pages deployment to complete..."
-
+          echo "⏳ Waiting for index.yaml to be updated with version ${{ steps.chart.outputs.chart_version }}..."
           
           for i in {1..20}; do
-            echo "Checking deployment status..."
-            response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              https://api.github.com/repos/${{ github.repository }}/pages)
+            echo "Checking index.yaml..."
+            response=$(curl -s https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.yaml)
             
-            echo "Full API Response:"
-            echo "$response" | jq '.'
-            
-            status=$(echo "$response" | jq -r '.status')
-            error=$(echo "$response" | jq -r '.error.message // empty')
-            
-            echo "Attempt $i: status = $status"
-            
-            if [ "$status" = "built" ]; then
-              echo "✅ GitHub Pages built successfully."
+            if echo "$response" | grep -q "version: ${{ steps.chart.outputs.chart_version }}"; then
+              echo "✅ Found version ${{ steps.chart.outputs.chart_version }} in index.yaml"
               exit 0
-            elif [ "$status" = "null" ] || [ "$status" = "404" ]; then
-              echo "⏳ Deployment not started yet. Waiting..."
-            elif [ -n "$error" ]; then
-              echo "❌ Deployment error: $error"
-              exit 1
-            else
-              echo "⏳ Still building... ($status)"
             fi
             
+            echo "Attempt $i: Version not found yet. Waiting..."
             sleep 10
           done
           
-          echo "❌ Timed out waiting for GitHub Pages deployment."
+          echo "❌ Timed out waiting for index.yaml to be updated."
           exit 1
 
       - name: Upload Helm package to GitHub Release
