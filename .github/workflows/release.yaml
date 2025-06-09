@@ -1,34 +1,70 @@
+# Manual Helm Library Release Workflow
+#
+# This workflow is designed to release a Helm library chart to GitHub Pages and create a GitHub Release.
+# It can only be triggered manually from the main branch.
+#
+# Workflow Steps:
+# 1. Checkout main branch
+# 2. Extract version from Chart.yaml
+# 3. Set up Helm
+# 4. Package Helm chart
+# 5. Update gh-pages branch with new chart version
+# 6. Wait for GitHub Pages to update
+# 7. Create GitHub Release with chart package
+#
+# Required Permissions:
+# - contents: write (for creating releases and pushing to gh-pages)
+# - pages: write (for updating GitHub Pages)
+# - id-token: write (for GitHub Pages deployment)
+#
+# Inputs:
+# - confirm (boolean): Confirmation flag to prevent accidental releases
+#
+# Outputs:
+# - Creates a new GitHub Release with the chart package
+# - Updates the Helm repository index on GitHub Pages
+# - Publishes the chart package to GitHub Pages
+
 name: Manual Helm Library Release (gh-pages)
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Confirm release from main branch'
+        required: true
+        default: 'false'
+        type: boolean
+
+# Set minimum required permissions
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.ref == 'refs/heads/main' && inputs.confirm == true
 
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Extract version from Chart.yaml
         id: chart
         run: |
-          version=$(grep '^version:' lib/Chart.yaml | awk '{print $2}')
-          echo "chart_version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Check if release already exists
-        run: |
-          tag="v${{ steps.chart.outputs.chart_version }}"
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag)
-          if [ "$response" -eq 200 ]; then
-            echo "❌ Release with tag $tag already exists!"
+          if [ ! -f "lib/Chart.yaml" ]; then
+            echo "❌ Chart.yaml not found in lib directory"
             exit 1
           fi
+          version=$(grep '^version:' lib/Chart.yaml | awk '{print $2}')
+          if [ -z "$version" ]; then
+            echo "❌ Could not extract version from Chart.yaml"
+            exit 1
+          fi
+          echo "chart_version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Set up Helm
         uses: azure/setup-helm@v3
@@ -39,11 +75,16 @@ jobs:
         run: |
           mkdir -p .build
           helm package lib --destination .build
+          if [ ! -f ".build/"*.tgz ]; then
+            echo "❌ Failed to package Helm chart"
+            exit 1
+          fi
 
-      - name: Prepare gh-pages
-        run: |
-          git fetch origin gh-pages
-          git worktree add gh-pages gh-pages
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
 
       - name: Update index.yaml and push to gh-pages
         run: |
@@ -54,7 +95,10 @@ jobs:
           git config user.email "actions@github.com"
           git add .
           git commit -m "Publish chart version ${{ steps.chart.outputs.chart_version }}" || echo "No changes"
-          git push origin gh-pages
+          git push origin gh-pages || {
+            echo "❌ Failed to push to gh-pages"
+            exit 1
+          }
           
       - name: Wait for index.yaml to be updated
         env:
@@ -62,17 +106,20 @@ jobs:
         run: |
           echo "⏳ Waiting for index.yaml to be updated with version ${{ steps.chart.outputs.chart_version }}..."
           
-          for i in {1..20}; do
-            echo "Checking index.yaml..."
-            response=$(curl -s https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.yaml)
+          max_attempts=10
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            echo "Checking index.yaml (attempt $attempt/$max_attempts)..."
+            response=$(curl -s -f https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.yaml)
             
-            if echo "$response" | grep -q "version: ${{ steps.chart.outputs.chart_version }}"; then
+            if [ $? -eq 0 ] && echo "$response" | grep -q "version: ${{ steps.chart.outputs.chart_version }}"; then
               echo "✅ Found version ${{ steps.chart.outputs.chart_version }} in index.yaml"
               exit 0
             fi
             
-            echo "Attempt $i: Version not found yet. Waiting..."
-            sleep 10
+            echo "Version not found yet. Waiting..."
+            sleep 5
+            attempt=$((attempt + 1))
           done
           
           echo "❌ Timed out waiting for index.yaml to be updated."
