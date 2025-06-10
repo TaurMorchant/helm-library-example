@@ -29,12 +29,6 @@ name: Manual Helm Library Release (gh-pages)
 
 on:
   workflow_dispatch:
-    inputs:
-      confirm:
-        description: 'Confirm release from main branch'
-        required: true
-        default: 'false'
-        type: boolean
 
 # Set minimum required permissions
 permissions:
@@ -46,7 +40,7 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.ref == 'refs/heads/main' && inputs.confirm == true
+    if: github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout main
